@@ -1,0 +1,87 @@
+name: Selenium BDD Test Suite
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:
+    inputs:
+      Environment:
+        description: "Which environment will be executed"
+        required: true
+        type: choice
+        default: qa
+        options: ["qa", "staging", "prod"]
+      tags:
+        description: "Cucumber tag to run (without @)"
+        required: false
+        type: string
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    env:
+      TEST_ENV: ${{ github.event.inputs.Environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # ---------------- TEST EXECUTION ----------------
+
+      - name: Run tests (PROD – only @prod)
+        if: ${{ github.event.inputs.Environment == 'prod' }}
+        run: |
+          echo "Running @prod tests on PROD"
+          mvn clean test "-Denv=prod" "-Dcucumber.filter.tags=@prod"
+
+      - name: Run smoke tests (Non-PROD, no tag)
+        if: ${{ github.event.inputs.Environment != 'prod' && (github.event.inputs.tags == '' || github.event.inputs.tags == null) }}
+        run: |
+          echo "Running @smoke tests on ${{ github.event.inputs.Environment }}"
+          mvn clean test "-Denv=${{ github.event.inputs.Environment }}" "-Dcucumber.filter.tags=@smoke"
+
+      - name: Run tests with specific tag
+        if: ${{ github.event.inputs.Environment != 'prod' && github.event.inputs.tags != '' && github.event.inputs.tags != null }}
+        run: |
+          echo "Running @${{ github.event.inputs.tags }} tests on ${{ github.event.inputs.Environment }}"
+          mvn clean test "-Denv=${{ github.event.inputs.Environment }}" "-Dcucumber.filter.tags=@${{ github.event.inputs.tags }}"
+
+      # ---------------- ALLURE ----------------
+
+      - name: Generate Allure Report
+        if: always()
+        run: |
+          mvn allure:report
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: target/site/allure-maven-plugin/
+          retention-days: 30
+
+      # ---------------- CUCUMBER HTML ----------------
+
+      - name: Upload Cucumber HTML Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cucumber-html-report
+          path: target/cucumber-reports/
+          retention-days: 30
