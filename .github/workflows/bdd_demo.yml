@@ -2,7 +2,7 @@ name: Selenium BDD Test Suite
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 minutes
+    - cron: "*/10 * * * *"   # Every 10 minutes
   workflow_dispatch:
     inputs:
       Environment:
@@ -24,15 +24,18 @@ jobs:
       TEST_ENV: ${{ github.event.inputs.Environment }}
 
     steps:
+      # ---------------- CHECKOUT ----------------
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------------- JAVA ----------------
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # ---------------- MAVEN CACHE ----------------
       - name: Cache Maven dependencies
         uses: actions/cache@v4
         with:
@@ -42,7 +45,6 @@ jobs:
             ${{ runner.os }}-maven-
 
       # ---------------- TEST EXECUTION ----------------
-
       - name: Run tests (PROD – only @prod)
         if: ${{ github.event.inputs.Environment == 'prod' }}
         run: |
@@ -61,23 +63,23 @@ jobs:
           echo "Running @${{ github.event.inputs.tags }} tests on ${{ github.event.inputs.Environment }}"
           mvn clean test "-Denv=${{ github.event.inputs.Environment }}" "-Dcucumber.filter.tags=@${{ github.event.inputs.tags }}"
 
-      # ---------------- ALLURE ----------------
-
-      - name: Generate Allure Report
+      # ---------------- DEBUG (Optional) ----------------
+      - name: Debug target folder
         if: always()
         run: |
-          mvn allure:report
+          echo "Listing target directory"
+          dir target
 
-      - name: Upload Allure Report
+      # ---------------- ALLURE ----------------
+      - name: Upload Allure Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: allure-report
-          path: target/site/allure-maven-plugin/
+          name: allure-results
+          path: target/allure-results/
           retention-days: 30
 
       # ---------------- CUCUMBER HTML ----------------
-
       - name: Upload Cucumber HTML Report
         if: always()
         uses: actions/upload-artifact@v4
