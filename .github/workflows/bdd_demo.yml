@@ -2,7 +2,7 @@ name: Selenium BDD Test Suite
 
 on:
   schedule:
-  - cron: "0 * * * *" # Run hourly 
+    - cron: "0 * * * *"   # Runs every hour
   workflow_dispatch:
     inputs:
       Environment:
@@ -10,7 +10,10 @@ on:
         required: true
         type: choice
         default: qa
-        options: ["qa", "staging", "prod"]
+        options:
+          - qa
+          - staging
+          - prod
       tags:
         description: "Cucumber tag to run (without @)"
         required: false
@@ -21,7 +24,9 @@ jobs:
     runs-on: windows-latest
 
     env:
-      TEST_ENV: ${{ github.event.inputs.Environment }}
+      # Use selected input if manual run, otherwise default to qa for schedule
+      TEST_ENV: ${{ github.event.inputs.Environment || 'qa' }}
+      TEST_TAG: ${{ github.event.inputs.tags || '' }}
 
     steps:
       # ---------------- CHECKOUT ----------------
@@ -45,32 +50,36 @@ jobs:
             ${{ runner.os }}-maven-
 
       # ---------------- TEST EXECUTION ----------------
-      - name: Run tests (PROD – only @prod)
-        if: ${{ github.event.inputs.Environment == 'prod' }}
+
+      # PROD → only @prod tests
+      - name: Run PROD tests (@prod only)
+        if: ${{ env.TEST_ENV == 'prod' }}
         run: |
           echo "Running @prod tests on PROD"
           mvn clean test "-Denv=prod" "-Dcucumber.filter.tags=@prod"
 
-      - name: Run smoke tests (Non-PROD, no tag)
-        if: ${{ github.event.inputs.Environment != 'prod' && (github.event.inputs.tags == '' || github.event.inputs.tags == null) }}
+      # Non-PROD → default smoke tests
+      - name: Run smoke tests (QA / Staging)
+        if: ${{ env.TEST_ENV != 'prod' && env.TEST_TAG == '' }}
         run: |
-          echo "Running @smoke tests on ${{ github.event.inputs.Environment }}"
-          mvn clean test "-Denv=${{ github.event.inputs.Environment }}" "-Dcucumber.filter.tags=@smoke"
+          echo "Running @smoke tests on ${{ env.TEST_ENV }}"
+          mvn clean test "-Denv=${{ env.TEST_ENV }}" "-Dcucumber.filter.tags=@smoke"
 
+      # Non-PROD → specific tag
       - name: Run tests with specific tag
-        if: ${{ github.event.inputs.Environment != 'prod' && github.event.inputs.tags != '' && github.event.inputs.tags != null }}
+        if: ${{ env.TEST_ENV != 'prod' && env.TEST_TAG != '' }}
         run: |
-          echo "Running @${{ github.event.inputs.tags }} tests on ${{ github.event.inputs.Environment }}"
-          mvn clean test "-Denv=${{ github.event.inputs.Environment }}" "-Dcucumber.filter.tags=@${{ github.event.inputs.tags }}"
+          echo "Running @${{ env.TEST_TAG }} tests on ${{ env.TEST_ENV }}"
+          mvn clean test "-Denv=${{ env.TEST_ENV }}" "-Dcucumber.filter.tags=@${{ env.TEST_TAG }}"
 
-      # ---------------- DEBUG (SAFE) ----------------
+      # ---------------- DEBUG ----------------
       - name: Debug target folder
         if: always()
         run: |
           echo "Listing target directory"
           dir target
 
-      # ---------------- ALLURE HTML GENERATION ----------------
+      # ---------------- ALLURE ----------------
       - name: Install Allure CLI
         if: always()
         run: |
